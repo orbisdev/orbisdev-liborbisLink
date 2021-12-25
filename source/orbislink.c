@@ -207,88 +207,86 @@ int orbisLinkCopyModulesFromNfs(const char *name)
 	unsigned char *mod_buffer=NULL;
 	sprintf(path,"%s/%s",MODULE_PATH_PREFIX,name);
 
-	ret=sceKernelStat(path,&sb);
-	if(ret!=0)
-	{
+	
 
-		fd=orbisNfsOpen(name,O_RDONLY,0777);
-		if(fd<0)
+	fd=orbisNfsOpen(name,O_RDONLY,0777);
+	if(fd<0)
+	{
+		debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] error opening %s module from your nfs server\n",__FUNCTION__,__LINE__,name);
+		return -1;
+	}
+	size=orbisNfsLseek(fd,0,SEEK_END);
+	orbisNfsLseek(fd,0,SEEK_SET);
+	if(size<0)
+	{
+		debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] Failed to read size of file %s\n",__FUNCTION__,__LINE__,name);
+		orbisNfsClose(fd);
+		return -1;
+	}
+	mod_buffer=malloc(sizeof(unsigned char)*size);
+	if(mod_buffer==NULL)
+	{
+		debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] Failed to allocate %d bytes\n",__FUNCTION__,__LINE__,size);
+		orbisNfsClose(fd);
+		return -1;
+	}
+	if(size>=1024*1024)
+	{
+		int numread=size/(1024*1024);
+		int lastread=size%(1024*1024);
+		int i,j;
+		for(j=0;j<numread;j++)
 		{
-			debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] error opening %s module from your nfs server\n",__FUNCTION__,__LINE__,name);
-			return -1;
-		}
-		size=orbisNfsLseek(fd,0,SEEK_END);
-		orbisNfsLseek(fd,0,SEEK_SET);
-		if(size<0)
-		{
-			debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] Failed to read size of file %s\n",__FUNCTION__,__LINE__,name);
-			orbisNfsClose(fd);
-			return -1;
-		}
-		mod_buffer=malloc(sizeof(unsigned char)*size);
-		if(mod_buffer==NULL)
-		{
-			debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] Failed to allocate %d bytes\n",__FUNCTION__,__LINE__,size);
-			orbisNfsClose(fd);
-			return -1;
-		}
-		if(size>=1024*1024)
-		{
-			int numread=size/(1024*1024);
-			int lastread=size%(1024*1024);
-			int i,j;
-			for(j=0;j<numread;j++)
+			if(j<numread-1)
 			{
-				if(j<numread-1)
-				{
-					i=orbisNfsRead(fd,mod_buffer+j*(1024*1024),(1024*1024));
-				}
-				else
-				{
-					i=orbisNfsRead(fd,mod_buffer+j*(1024*1024),(1024*1024)+lastread);
-				}
-				if(i<0)
-				{
-					debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] nfs_read, data read error\n",__FUNCTION__,__LINE__);
-					orbisNfsClose(fd);
-					free(mod_buffer);
-					return -1;
-				}
-				debugNetPrintf(DEBUGNET_DEBUG,"[ORBISLINK][%s][%d] orbisNfsRead: chunk %d  read %d\n",__FUNCTION__,__LINE__,j,i);
+				i=orbisNfsRead(fd,mod_buffer+j*(1024*1024),(1024*1024));
 			}
-		}
-		else
-		{
-			ret=orbisNfsRead(fd,mod_buffer,size);
-			if(ret!=size)
+			else
 			{
-				debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] Failed to read content of file %s requested %d returned ret\n",__FUNCTION__,name,size,ret);
+				i=orbisNfsRead(fd,mod_buffer+j*(1024*1024),(1024*1024)+lastread);
+			}
+			if(i<0)
+			{
+				debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] nfs_read, data read error\n",__FUNCTION__,__LINE__);
 				orbisNfsClose(fd);
 				free(mod_buffer);
 				return -1;
-			}  
+			}
+			debugNetPrintf(DEBUGNET_DEBUG,"[ORBISLINK][%s][%d] orbisNfsRead: chunk %d  read %d\n",__FUNCTION__,__LINE__,j,i);
 		}
-		orbisNfsClose(fd);
-		fd=-1;
-		fd=sceKernelOpen(path,O_WRONLY|O_CREAT|O_TRUNC,0777);
-		if(fd<0)
-		{
-			debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] error sceKernelOpen err 0x%08X opening %s\n",__FUNCTION__,__LINE__,fd,path);
-			free(mod_buffer);
-			return -1;
-		}
-		ret=sceKernelWrite(fd,mod_buffer,size);
+	}
+	else
+	{
+		ret=orbisNfsRead(fd,mod_buffer,size);
 		if(ret!=size)
 		{
-			debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] sceKernelWrite err 0x%08X to write content of file %s\n",__FUNCTION__,__LINE__,ret,name);
+			debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] Failed to read content of file %s requested %d returned ret\n",__FUNCTION__,name,size,ret);
 			orbisNfsClose(fd);
 			free(mod_buffer);
-			return -1;	
-		}
-		sceKernelClose(fd);
-		sceKernelSync();
-		free(mod_buffer);
+			return -1;
+		}  
 	}
+	orbisNfsClose(fd);
+	fd=-1;
+	fd=sceKernelOpen(path,O_WRONLY|O_CREAT|O_TRUNC,0777);
+	if(fd<0)
+	{
+		debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] error sceKernelOpen err 0x%08X opening %s\n",__FUNCTION__,__LINE__,fd,path);
+		free(mod_buffer);
+		return -1;
+	}
+	ret=sceKernelWrite(fd,mod_buffer,size);
+	if(ret!=size)
+	{
+		debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] sceKernelWrite err 0x%08X to write content of file %s\n",__FUNCTION__,__LINE__,ret,name);
+		orbisNfsClose(fd);
+		free(mod_buffer);
+		return -1;	
+	}
+	sceKernelClose(fd);
+	sceKernelSync();
+	free(mod_buffer);
+	
 	return ORBISLINK_OK;
 }
 
@@ -296,25 +294,37 @@ int orbisLinkUploadPigletModules()
 {
 	
 	int ret;
-	
-	ret=orbisLinkCopyModulesFromNfs(PIGLET_MODULE_NAME);
-	if(ret==-1)
-	{
-		shaderCompilerEnabled=0;
-		debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] %s no valid module we will use default piglet without shader compiler\n",__FUNCTION__,__LINE__,PIGLET_MODULE_NAME);
-		return ORBISLINK_ERROR_UPLOADING_PIGLET;
-	}
-	debugNetPrintf(DEBUGNET_DEBUG,"[ORBISLINK][%s][%d] %s module already on PlayStation file system\n",__FUNCTION__,__LINE__,PIGLET_MODULE_NAME);
+	struct stat sb;
+	char path[256];
+	sprintf(path,"%s/%s",MODULE_PATH_PREFIX,PIGLET_MODULE_NAME);
 
-	ret=orbisLinkCopyModulesFromNfs(SHCOMP_MODULE_NAME);
-	if(ret==-1)
+	ret=sceKernelStat(path,&sb);
+	if(ret!=0)
 	{
-		shaderCompilerEnabled=0;
-		debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] %s no valid module for shader compiler\n",__FUNCTION__,__LINE__,SHCOMP_MODULE_NAME);
-		return ORBISLINK_ERROR_UPLOADING_SHCOMP;
+		ret=orbisLinkCopyModulesFromNfs(PIGLET_MODULE_NAME);
+		if(ret==-1)
+		{
+			shaderCompilerEnabled=0;
+			debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] %s no valid module we will use default piglet without shader compiler\n",__FUNCTION__,__LINE__,PIGLET_MODULE_NAME);
+			return ORBISLINK_ERROR_UPLOADING_PIGLET;
+		}
+		debugNetPrintf(DEBUGNET_DEBUG,"[ORBISLINK][%s][%d] %s module already on PlayStation file system\n",__FUNCTION__,__LINE__,PIGLET_MODULE_NAME);
 	}
-	debugNetPrintf(DEBUGNET_DEBUG,"[ORBISLINK][%s][%d] %s module already on PlayStation file system\n",__FUNCTION__,__LINE__,SHCOMP_MODULE_NAME);
-	shaderCompilerEnabled=1;
+	char path1[256];
+	sprintf(path1,"%s/%s",MODULE_PATH_PREFIX,PIGLET_MODULE_NAME);
+	ret=sceKernelStat(path1,&sb);
+	if(ret!=0)
+	{
+		ret=orbisLinkCopyModulesFromNfs(SHCOMP_MODULE_NAME);
+		if(ret==-1)
+		{
+			shaderCompilerEnabled=0;
+			debugNetPrintf(DEBUGNET_ERROR,"[ORBISLINK][%s][%d] %s no valid module for shader compiler\n",__FUNCTION__,__LINE__,SHCOMP_MODULE_NAME);
+			return ORBISLINK_ERROR_UPLOADING_SHCOMP;
+		}
+		debugNetPrintf(DEBUGNET_DEBUG,"[ORBISLINK][%s][%d] %s module already on PlayStation file system\n",__FUNCTION__,__LINE__,SHCOMP_MODULE_NAME);
+		shaderCompilerEnabled=1;
+	}
 	return ORBISLINK_OK;
 }
 int orbisLinkUploadSelf(const char *path)
