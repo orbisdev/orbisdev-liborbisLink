@@ -19,6 +19,6 @@ $(OutPath)/$(TargetFile).a: $(ObjectFiles)
 
 install:
 	@cp $(OutPath)/$(TargetFile).a $(ORBISDEV)/usr/lib
-	@cp include/orbisLink.h $(ORBISDEV)/usr/include/orbis
+	@cp include/orbislink.h $(ORBISDEV)/usr/include/orbis
 	@echo "$(TargetFile) Installed!"
 
