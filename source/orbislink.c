@@ -17,7 +17,6 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/mman.h>
-#include <orbisdev.h>
 #include "orbislink.h"
 #include <sys/stat.h>
 #include <sys/fcntl.h>
